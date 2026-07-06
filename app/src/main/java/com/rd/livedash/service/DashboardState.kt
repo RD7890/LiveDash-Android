@@ -11,6 +11,8 @@ object DashboardState {
     val screenshots = MutableStateFlow<List<ScreenshotEntry>>(emptyList())
     val chatMessages = MutableStateFlow<List<ChatMessage>>(emptyList())
     val senders = MutableStateFlow<List<SenderInfo>>(emptyList())
+    val latestFrames = MutableStateFlow<Map<String, ScreenshotEntry>>(emptyMap())
+    val perSenderChat = MutableStateFlow<Map<String, List<ChatMessage>>>(emptyMap())
     var server: DashboardServer? = null
 
     fun addScreenshot(entry: ScreenshotEntry) {
@@ -20,6 +22,12 @@ object DashboardState {
         screenshots.value = current
     }
 
+    fun addFrame(entry: ScreenshotEntry) {
+        val current = latestFrames.value.toMutableMap()
+        current[entry.senderId] = entry
+        latestFrames.value = current
+    }
+
     fun addChat(msg: ChatMessage) {
         val current = chatMessages.value.toMutableList()
         current.add(msg)
@@ -27,11 +35,22 @@ object DashboardState {
         chatMessages.value = current
     }
 
+    fun addPerSenderChat(senderId: String, msg: ChatMessage) {
+        val current = perSenderChat.value.toMutableMap()
+        val list = (current[senderId] ?: emptyList()).toMutableList()
+        list.add(msg)
+        if (list.size > 100) list.removeAt(0)
+        current[senderId] = list
+        perSenderChat.value = current
+    }
+
     fun reset() {
         serverRunning.value = false
         screenshots.value = emptyList()
         chatMessages.value = emptyList()
         senders.value = emptyList()
+        latestFrames.value = emptyMap()
+        perSenderChat.value = emptyMap()
         server = null
     }
 }
