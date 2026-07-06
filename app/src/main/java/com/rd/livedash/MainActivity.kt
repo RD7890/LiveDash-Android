@@ -47,8 +47,8 @@ class MainActivity : ComponentActivity() {
                             text = { Text("All services will be stopped and the app will close completely.", color = TextSecondary) },
                             confirmButton = {
                                 TextButton(onClick = {
-                                    stopService(Intent(this@MainActivity, DashboardService::class.java))
-                                    stopService(Intent(this@MainActivity, OverlayService::class.java))
+                                    startService(Intent(this@MainActivity, DashboardService::class.java).apply { action = DashboardService.ACTION_STOP })
+                                    startService(Intent(this@MainActivity, OverlayService::class.java).apply { action = OverlayService.ACTION_STOP })
                                     finishAndRemoveTask()
                                 }) { Text("Exit", color = Rose) }
                             },
