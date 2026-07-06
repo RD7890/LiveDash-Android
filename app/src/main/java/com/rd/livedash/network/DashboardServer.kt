@@ -18,6 +18,7 @@ class DashboardServer(port: Int) : WebSocketServer(InetSocketAddress(port)) {
     private val senders = ConcurrentHashMap<WebSocket, SenderInfo>()
 
     var onScreenshot: ((ScreenshotEntry) -> Unit)? = null
+    var onFrame: ((ScreenshotEntry) -> Unit)? = null
     var onChat: ((ChatMessage) -> Unit)? = null
     var onSendersChanged: ((List<SenderInfo>) -> Unit)? = null
 
@@ -29,11 +30,9 @@ class DashboardServer(port: Int) : WebSocketServer(InetSocketAddress(port)) {
             val info = SenderInfo(UUID.randomUUID().toString(), name, System.currentTimeMillis())
             senders[conn] = info
             broadcastSenderList()
-            // send ack
             conn.send(JSONObject().put("type", "ack").put("id", info.id).toString())
         } else {
             viewers[conn] = UUID.randomUUID().toString()
-            // send current sender list
             conn.send(buildSendersJson())
         }
         Log.d("DashboardServer", "Connected: role=$role name=$name")
@@ -62,8 +61,23 @@ class DashboardServer(port: Int) : WebSocketServer(InetSocketAddress(port)) {
                     onScreenshot?.invoke(entry)
                     broadcastToViewers(message)
                 }
+                "frame" -> {
+                    val info = senders[conn] ?: return
+                    val entry = ScreenshotEntry(
+                        id = UUID.randomUUID().toString(),
+                        dataBase64 = json.optString("data"),
+                        title = "Live",
+                        url = "",
+                        timestamp = json.optLong("ts", System.currentTimeMillis()),
+                        senderId = info.id,
+                        senderName = info.name
+                    )
+                    onFrame?.invoke(entry)
+                    broadcastToViewers(message)
+                }
                 "chat" -> {
                     val text = json.optString("text")
+                    val targetSenderId = json.optString("targetSenderId", "")
                     val isSender = senders.containsKey(conn)
                     val senderInfo = senders[conn]
                     val msg = ChatMessage(
@@ -71,12 +85,18 @@ class DashboardServer(port: Int) : WebSocketServer(InetSocketAddress(port)) {
                         text = text,
                         timestamp = System.currentTimeMillis(),
                         outgoing = false,
-                        senderName = if (isSender) senderInfo?.name ?: "Sender" else "Viewer"
+                        senderName = if (isSender) senderInfo?.name ?: "Sender" else "Viewer",
+                        senderId = senderInfo?.id ?: ""
                     )
                     onChat?.invoke(msg)
-                    // relay to opposite side
-                    if (isSender) broadcastToViewers(message)
-                    else broadcastToSenders(message)
+                    if (isSender) {
+                        broadcastToViewers(message)
+                    } else if (targetSenderId.isNotEmpty()) {
+                        val targetConn = senders.entries.firstOrNull { it.value.id == targetSenderId }?.key
+                        targetConn?.takeIf { it.isOpen }?.send(message)
+                    } else {
+                        broadcastToSenders(message)
+                    }
                 }
             }
         } catch (e: Exception) {
@@ -97,6 +117,14 @@ class DashboardServer(port: Int) : WebSocketServer(InetSocketAddress(port)) {
         val json = JSONObject().put("type", "chat").put("text", text)
             .put("ts", System.currentTimeMillis()).toString()
         broadcastToSenders(json)
+    }
+
+    fun sendChatToSender(senderId: String, text: String) {
+        val conn = senders.entries.firstOrNull { it.value.id == senderId }?.key ?: return
+        if (!conn.isOpen) return
+        val json = JSONObject().put("type", "chat").put("text", text)
+            .put("ts", System.currentTimeMillis()).toString()
+        conn.send(json)
     }
 
     private fun broadcastToViewers(msg: String) {
