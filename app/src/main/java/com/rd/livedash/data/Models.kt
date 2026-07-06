@@ -15,7 +15,8 @@ data class ChatMessage(
     val text: String,
     val timestamp: Long,
     val outgoing: Boolean,
-    val senderName: String = ""
+    val senderName: String = "",
+    val senderId: String = ""
 )
 
 data class SenderInfo(
