@@ -1,5 +1,6 @@
 package com.rd.livedash.network
 
+import android.util.Base64
 import android.util.Log
 import com.rd.livedash.data.ChatMessage
 import com.rd.livedash.data.ScreenshotEntry
@@ -14,11 +15,12 @@ import java.util.concurrent.ConcurrentHashMap
 
 class DashboardServer(port: Int) : WebSocketServer(InetSocketAddress(port)) {
 
-    private val viewers = ConcurrentHashMap<WebSocket, String>()   // conn -> viewerId
+    private val viewers = ConcurrentHashMap<WebSocket, String>()
     private val senders = ConcurrentHashMap<WebSocket, SenderInfo>()
 
     var onScreenshot: ((ScreenshotEntry) -> Unit)? = null
     var onFrame: ((ScreenshotEntry) -> Unit)? = null
+    var onVideoFrame: ((senderId: String, data: ByteArray, flags: Int) -> Unit)? = null
     var onChat: ((ChatMessage) -> Unit)? = null
     var onSendersChanged: ((List<SenderInfo>) -> Unit)? = null
 
@@ -47,6 +49,15 @@ class DashboardServer(port: Int) : WebSocketServer(InetSocketAddress(port)) {
         try {
             val json = JSONObject(message)
             when (json.optString("type")) {
+                "video_frame" -> {
+                    val info = senders[conn] ?: return
+                    val b64 = json.optString("data")
+                    val flags = json.optInt("flags", 0)
+                    if (b64.isNotEmpty()) {
+                        val bytes = Base64.decode(b64, Base64.NO_WRAP)
+                        onVideoFrame?.invoke(info.id, bytes, flags)
+                    }
+                }
                 "screenshot" -> {
                     val info = senders[conn] ?: return
                     val entry = ScreenshotEntry(
@@ -73,7 +84,6 @@ class DashboardServer(port: Int) : WebSocketServer(InetSocketAddress(port)) {
                         senderName = info.name
                     )
                     onFrame?.invoke(entry)
-                    broadcastToViewers(message)
                 }
                 "chat" -> {
                     val text = json.optString("text")
@@ -109,7 +119,7 @@ class DashboardServer(port: Int) : WebSocketServer(InetSocketAddress(port)) {
     }
 
     override fun onStart() {
-        Log.d("DashboardServer", "Server started on port ${port}")
+        Log.d("DashboardServer", "Server started on port $port")
         connectionLostTimeout = 30
     }
 
