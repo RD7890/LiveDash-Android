@@ -4,13 +4,13 @@ import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
+import android.content.Context
 import android.content.Intent
 import android.os.IBinder
+import android.os.PowerManager
 import androidx.lifecycle.LifecycleService
 import com.rd.livedash.MainActivity
-import com.rd.livedash.R
 import com.rd.livedash.network.DashboardServer
-import java.util.UUID
 
 class DashboardService : LifecycleService() {
 
@@ -22,10 +22,14 @@ class DashboardService : LifecycleService() {
     }
 
     private var server: DashboardServer? = null
+    private var wakeLock: PowerManager.WakeLock? = null
 
     override fun onCreate() {
         super.onCreate()
         createChannel()
+        val pm = getSystemService(Context.POWER_SERVICE) as PowerManager
+        wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "LiveDash:DashboardService")
+        wakeLock?.acquire(10 * 60 * 60 * 1000L)
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -45,7 +49,13 @@ class DashboardService : LifecycleService() {
         server?.stop()
         val srv = DashboardServer(port)
         srv.onScreenshot = { entry -> DashboardState.addScreenshot(entry) }
-        srv.onChat = { msg -> DashboardState.addChat(msg) }
+        srv.onFrame = { entry -> DashboardState.addFrame(entry) }
+        srv.onChat = { msg ->
+            DashboardState.addChat(msg)
+            if (msg.senderId.isNotEmpty()) {
+                DashboardState.addPerSenderChat(msg.senderId, msg)
+            }
+        }
         srv.onSendersChanged = { list -> DashboardState.senders.value = list }
         srv.start()
         server = srv
@@ -60,6 +70,7 @@ class DashboardService : LifecycleService() {
 
     override fun onDestroy() {
         stopServer()
+        try { if (wakeLock?.isHeld == true) wakeLock?.release() } catch (_: Exception) {}
         super.onDestroy()
     }
 
