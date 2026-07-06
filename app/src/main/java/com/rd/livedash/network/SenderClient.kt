@@ -42,22 +42,12 @@ class SenderClient(
         onError?.invoke(ex.message ?: "Unknown error")
     }
 
-    fun sendScreenshot(base64Jpeg: String, title: String = "", url: String = "") {
+    fun sendVideoFrame(b64: String, flags: Int) {
         if (!isOpen) return
         val json = JSONObject()
-            .put("type", "screenshot")
-            .put("data", base64Jpeg)
-            .put("title", title)
-            .put("url", url)
-            .put("ts", System.currentTimeMillis())
-        send(json.toString())
-    }
-
-    fun sendFrame(base64Jpeg: String) {
-        if (!isOpen) return
-        val json = JSONObject()
-            .put("type", "frame")
-            .put("data", base64Jpeg)
+            .put("type", "video_frame")
+            .put("data", b64)
+            .put("flags", flags)
             .put("ts", System.currentTimeMillis())
         send(json.toString())
     }
