@@ -53,6 +53,15 @@ class SenderClient(
         send(json.toString())
     }
 
+    fun sendFrame(base64Jpeg: String) {
+        if (!isOpen) return
+        val json = JSONObject()
+            .put("type", "frame")
+            .put("data", base64Jpeg)
+            .put("ts", System.currentTimeMillis())
+        send(json.toString())
+    }
+
     fun sendChat(text: String) {
         if (!isOpen) return
         val json = JSONObject().put("type", "chat").put("text", text)
