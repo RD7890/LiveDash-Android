@@ -1,0 +1,5 @@
+-keep class com.rd.livedash.** { *; }
+-keep class org.java_websocket.** { *; }
+-dontwarn org.java_websocket.**
+-keep class javax.** { *; }
+-dontwarn javax.**
