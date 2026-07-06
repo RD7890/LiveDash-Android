@@ -50,6 +50,10 @@ class DashboardService : LifecycleService() {
         val srv = DashboardServer(port)
         srv.onScreenshot = { entry -> DashboardState.addScreenshot(entry) }
         srv.onFrame = { entry -> DashboardState.addFrame(entry) }
+        srv.onVideoFrame = { senderId, data, flags ->
+            DashboardState.getOrCreateVideoStream(senderId)
+            DashboardState.emitVideoFrame(senderId, data, flags)
+        }
         srv.onChat = { msg ->
             DashboardState.addChat(msg)
             if (msg.senderId.isNotEmpty()) {
@@ -66,6 +70,12 @@ class DashboardService : LifecycleService() {
     private fun stopServer() {
         try { server?.stop(500) } catch (_: Exception) {}
         DashboardState.reset()
+    }
+
+    override fun onTaskRemoved(rootIntent: Intent?) {
+        stopServer()
+        stopSelf()
+        super.onTaskRemoved(rootIntent)
     }
 
     override fun onDestroy() {
