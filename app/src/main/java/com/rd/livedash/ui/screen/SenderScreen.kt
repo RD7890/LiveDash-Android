@@ -6,6 +6,7 @@ import android.media.projection.MediaProjectionManager
 import android.net.Uri
 import android.os.Build
 import android.provider.Settings
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.*
@@ -30,7 +31,7 @@ import com.rd.livedash.viewmodel.AppViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun SenderScreen(vm: AppViewModel = viewModel()) {
+fun SenderScreen(vm: AppViewModel = viewModel(), onBack: () -> Unit = {}) {
     val ctx = LocalContext.current
     val activity = ctx as? Activity
     val connected by vm.senderConnected.collectAsState()
@@ -41,9 +42,30 @@ fun SenderScreen(vm: AppViewModel = viewModel()) {
     var senderName by remember { mutableStateOf("Phone ${Build.MODEL}") }
     var chatInput by remember { mutableStateOf("") }
     var overlayPermGranted by remember { mutableStateOf(Settings.canDrawOverlays(ctx)) }
-    var showPermSheet by remember { mutableStateOf(false) }
+    var showExitDialog by remember { mutableStateOf(false) }
 
     val projectionManager = remember { ctx.getSystemService(MediaProjectionManager::class.java) }
+
+    BackHandler { showExitDialog = true }
+
+    if (showExitDialog) {
+        AlertDialog(
+            onDismissRequest = { showExitDialog = false },
+            containerColor = SurfaceCard,
+            title = { Text("Leave Sender?", color = TextPrimary, fontWeight = FontWeight.Bold) },
+            text = { Text(if (connected) "This will stop the overlay and disconnect from the dashboard." else "Go back to mode selection?", color = TextSecondary) },
+            confirmButton = {
+                TextButton(onClick = {
+                    if (connected) ctx.startService(Intent(ctx, OverlayService::class.java).apply { action = OverlayService.ACTION_STOP })
+                    showExitDialog = false
+                    onBack()
+                }) { Text(if (connected) "Stop & Leave" else "Leave", color = Rose) }
+            },
+            dismissButton = {
+                TextButton(onClick = { showExitDialog = false }) { Text("Cancel", color = TextMuted) }
+            }
+        )
+    }
 
     val captureResultLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.StartActivityForResult()
@@ -67,6 +89,9 @@ fun SenderScreen(vm: AppViewModel = viewModel()) {
         topBar = {
             TopAppBar(
                 title = { Text("Sender Setup", style = MaterialTheme.typography.titleLarge) },
+                navigationIcon = {
+                    IconButton(onClick = { showExitDialog = true }) { Icon(Icons.Default.ArrowBack, null, tint = TextPrimary) }
+                },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = Background)
             )
         }
@@ -185,11 +210,12 @@ fun SenderScreen(vm: AppViewModel = viewModel()) {
                 }
             }
 
-            // Chat section
+            // Chat section (in-app fallback when overlay is open)
             AnimatedVisibility(visible = connected) {
                 Surface(shape = RoundedCornerShape(16.dp), color = SurfaceCard, border = BorderStroke(1.dp, OutlineColor)) {
                     Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                         Text("Chat", style = MaterialTheme.typography.titleMedium, color = TextPrimary, fontWeight = FontWeight.SemiBold)
+                        Text("(You can also chat via the overlay bubble on your screen)", style = MaterialTheme.typography.labelSmall, color = TextMuted)
                         Column(Modifier.heightIn(max = 200.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                             chatMessages.takeLast(30).forEach { msg ->
                                 Surface(
@@ -197,7 +223,7 @@ fun SenderScreen(vm: AppViewModel = viewModel()) {
                                     color = if (msg.outgoing) IndigoContainer else SurfaceElevated
                                 ) {
                                     Text(
-                                        "${if (msg.outgoing) "You" else "Dashboard"}: ${msg.text}",
+                                        "${if (msg.outgoing) "You" else msg.senderName.ifEmpty { "Dashboard" }}: ${msg.text}",
                                         style = MaterialTheme.typography.bodyMedium,
                                         color = if (msg.outgoing) Indigo else TextSecondary,
                                         modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
