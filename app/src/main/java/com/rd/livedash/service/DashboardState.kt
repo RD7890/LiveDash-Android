@@ -4,7 +4,15 @@ import com.rd.livedash.data.ChatMessage
 import com.rd.livedash.data.ScreenshotEntry
 import com.rd.livedash.data.SenderInfo
 import com.rd.livedash.network.DashboardServer
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
+import java.util.concurrent.ConcurrentHashMap
+
+data class VideoChunk(val data: ByteArray, val flags: Int, val ts: Long) {
+    override fun equals(other: Any?) = false
+    override fun hashCode() = System.identityHashCode(this)
+}
 
 object DashboardState {
     val serverRunning = MutableStateFlow(false)
@@ -14,6 +22,15 @@ object DashboardState {
     val latestFrames = MutableStateFlow<Map<String, ScreenshotEntry>>(emptyMap())
     val perSenderChat = MutableStateFlow<Map<String, List<ChatMessage>>>(emptyMap())
     var server: DashboardServer? = null
+
+    private val videoStreams = ConcurrentHashMap<String, MutableSharedFlow<VideoChunk>>()
+
+    fun getOrCreateVideoStream(senderId: String): SharedFlow<VideoChunk> =
+        videoStreams.getOrPut(senderId) { MutableSharedFlow(replay = 30, extraBufferCapacity = 64) }
+
+    fun emitVideoFrame(senderId: String, data: ByteArray, flags: Int) {
+        videoStreams[senderId]?.tryEmit(VideoChunk(data, flags, System.currentTimeMillis()))
+    }
 
     fun addScreenshot(entry: ScreenshotEntry) {
         val current = screenshots.value.toMutableList()
@@ -51,6 +68,7 @@ object DashboardState {
         senders.value = emptyList()
         latestFrames.value = emptyMap()
         perSenderChat.value = emptyMap()
+        videoStreams.clear()
         server = null
     }
 }
